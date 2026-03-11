@@ -6,9 +6,13 @@
     </div>
     <h3 class="case-title">{{ title }}</h3>
     <p class="case-description">{{ description }}</p>
-    <a href="#" class="case-link" @click.prevent="$emit('start')">
-      开始模拟 →
-    </a>
+    <div v-if="tags.length > 0" class="case-tags">
+      <span v-for="tag in tags.slice(0, 4)" :key="tag" class="case-tag">{{ tag }}</span>
+    </div>
+    <div class="case-footer">
+      <p v-if="caseId" class="case-id">病例编号：{{ caseId }}</p>
+      <button type="button" class="case-action" @click="$emit('start')">开始模拟 →</button>
+    </div>
   </div>
 </template>
 
@@ -16,10 +20,12 @@
 import { computed } from 'vue'
 
 const props = defineProps<{
+  caseId?: string
   level: string
   category: string
   title: string
   description: string
+  tags?: string[]
 }>()
 
 defineEmits<{
@@ -39,8 +45,10 @@ const displayLevel = computed(() => {
   if (l === 'beginner') return '初级'
   if (l === 'intermediate') return '中级'
   if (l === 'advanced') return '高级'
-  return ''
+  return props.level || '未分级'
 })
+
+const tags = computed(() => props.tags ?? [])
 </script>
 
 <style scoped>
@@ -107,15 +115,56 @@ const displayLevel = computed(() => {
   flex: 1;
 }
 
-.case-link {
-  font-size: 14px;
-  font-weight: 500;
-  color: #2563eb;
-  text-decoration: none;
-  display: inline-block;
+.case-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-.case-link:hover {
-  text-decoration: underline;
+.case-tag {
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.case-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.case-id {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.4;
+}
+
+.case-action {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 14px;
+  background: #eef2f7;
+  color: #2563eb;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 14px 22px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.case-action:hover {
+  background: #e2e8f0;
+}
+
+.case-action:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
 }
 </style>

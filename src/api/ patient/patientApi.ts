@@ -14,6 +14,7 @@ export interface PatientCaseSummary {
   tags: string[]
 }
 
+// 分页获取所有案例概要信息的接口返回的数据结构
 export interface PatientCaseListData {
   cases: PatientCaseSummary[]
   total: number
@@ -26,6 +27,7 @@ export interface PatientCaseListResponse extends ApiResponseBase {
   data: PatientCaseListData
 }
 
+// 获取单个案例基本信息
 export interface PatientCaseDetailResponse extends ApiResponseBase {
   data: PatientCaseSummary
 }
@@ -40,12 +42,16 @@ export interface ExamConfirmRequest {
   confirmed?: boolean
 }
 
+//---------------------以下是病人对话相关的数据结构---------------------
+
+//病人正常回复的结构
 export interface PatientReplyData {
   session_id: string
   reply: string
   intent?: string | null
 }
 
+//病人待确认检查的结构，包含需要做的检查列表和未匹配上的检查列表，以及一个确认token，供后续确认接口使用
 export interface ExamConfirmData {
   session_id: string
   message: string
@@ -59,6 +65,7 @@ export interface ExamResultItem {
   result: string
 }
 
+// 病人检查结果的结构，用于展示检查结果报告
 export interface ExamResultData {
   session_id: string
   results: ExamResultItem[]

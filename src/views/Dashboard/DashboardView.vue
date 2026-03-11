@@ -1,64 +1,113 @@
 <template>
   <div class="dashboard">
-    <!-- Welcome Section -->
     <section class="welcome-section">
       <h1 class="welcome-title">欢迎回来！</h1>
       <p class="welcome-subtitle">准备好继续你的临床推理训练了吗？</p>
     </section>
 
-    <!-- Stats Row -->
-    <section class="stats-row">
-      <StatsCard label="已完成病例" value="12" badge="本周新增 2 例" badge-type="info" />
-      <StatsCard label="平均准确率" value="87%" badge="提升 1.5%" badge-type="success" />
-      <StatsCard label="导师反馈" value="5 条新反馈" badge="待查看" badge-type="warning" />
-    </section>
-
-    <!-- Recommended Cases -->
     <section class="cases-section">
-      <h2 class="section-title">推荐病例</h2>
-      <div class="cases-row">
-        <CaseCard v-for="item in recommendedCases" :key="item.title" :level="item.level" :category="item.category"
-          :title="item.title" :description="item.description" @start="handleStartSimulation(item)" />
+      <div class="section-heading">
+        <h2 class="section-title">所有病例</h2>
+        <span class="section-count">共 {{ patientCases.length }} 个</span>
+      </div>
+
+      <div v-if="isLoading" class="status-panel">
+        <h3 class="status-title">病例加载中</h3>
+        <p class="status-text">正在从后端同步全部病例详情，请稍候。</p>
+      </div>
+
+      <div v-else-if="loadError" class="status-panel status-panel--error">
+        <h3 class="status-title">病例加载失败</h3>
+        <p class="status-text">{{ loadError }}</p>
+        <button class="retry-button" type="button" @click="reloadCases">重新加载</button>
+      </div>
+
+      <div v-else-if="patientCases.length === 0" class="status-panel">
+        <h3 class="status-title">暂无病例</h3>
+        <p class="status-text">当前没有可展示的病例数据。</p>
+      </div>
+
+      <div v-else class="cases-row">
+        <CaseCard v-for="item in patientCases" :key="item.case_id" :case-id="item.case_id" :level="item.difficulty"
+          :category="item.department" :title="item.title" :description="item.summary" :tags="item.tags"
+          @start="handleStartSimulation(item)" />
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import StatsCard from './StatsCard.vue'
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import CaseCard from './CaseCard.vue'
+import type { PatientCaseSummary } from '@/api/ patient/patientApi'
+import { getPatientCaseDetail, getPatientCases } from '@/api/ patient/patientApi'
 
-interface CaseItem {
-  level: string
-  category: string
-  title: string
-  description: string
+const router = useRouter()
+const patientCases = ref<PatientCaseSummary[]>([])
+const isLoading = ref(false)
+const loadError = ref('')
+const defaultCasesPageSize = 8
+
+async function fetchAllCaseSummaries(): Promise<PatientCaseSummary[]> {
+  const firstPageResponse = await getPatientCases({ page: 1, page_size: defaultCasesPageSize })
+  const { cases, total_pages: totalPages, page_size: pageSize } = firstPageResponse.data
+
+  if (totalPages <= 1) {
+    return cases
+  }
+
+  const remainingResponses = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, index) =>
+      getPatientCases({ page: index + 2, page_size: pageSize }),
+    ),
+  )
+
+  return cases.concat(...remainingResponses.map((response) => response.data.cases))
 }
 
-const recommendedCases: CaseItem[] = [
-  {
-    level: 'Intermediate',
-    category: '心血管内科',
-    title: '急性胸痛',
-    description: '56 岁男性，突发胸骨后压榨样疼痛就诊。',
-  },
-  {
-    level: 'Beginner',
-    category: '呼吸内科',
-    title: '持续性咳嗽',
-    description: '34 岁女性，干咳伴低热已持续 3 周。',
-  },
-  {
-    level: 'Advanced',
-    category: '消化内科',
-    title: '腹痛',
-    description: '45 岁男性，右下腹剧烈疼痛并伴有恶心。',
-  },
-]
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
 
-function handleStartSimulation(item: CaseItem) {
+  return '加载病例列表时发生未知错误'
+}
+
+async function loadCases() {
+  isLoading.value = true
+  loadError.value = ''
+
+  try {
+    const caseSummaries = await fetchAllCaseSummaries()
+    const detailResponses = await Promise.all(
+      caseSummaries.map((item) => getPatientCaseDetail(item.case_id)),
+    )
+
+    patientCases.value = detailResponses.map((response) => response.data)
+  } catch (error) {
+    patientCases.value = []
+    loadError.value = normalizeErrorMessage(error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function reloadCases() {
+  void loadCases()
+}
+
+function handleStartSimulation(item: PatientCaseSummary) {
   console.log('开始模拟:', item.title)
+  void router.push({
+    name: 'ClinicalCases',
+    query: { caseId: item.case_id },
+  })
 }
+
+onMounted(() => {
+  void loadCases()
+})
 </script>
 
 <style scoped>
@@ -95,22 +144,81 @@ function handleStartSimulation(item: CaseItem) {
   margin-bottom: 32px;
 }
 
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .section-title {
   font-size: 18px;
   font-weight: 600;
   color: #111827;
-  margin: 0 0 16px 0;
+  margin: 0;
+}
+
+.section-count {
+  font-size: 13px;
+  color: #6b7280;
 }
 
 .cases-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
 }
 
-@media (max-width: 900px) {
+.status-panel {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+}
 
-  .stats-row,
-  .cases-row {
+.status-panel--error {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.status-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.status-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #6b7280;
+}
+
+.retry-button {
+  margin-top: 16px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry-button:hover {
+  background: #1d4ed8;
+}
+
+@media (max-width: 900px) {
+  .dashboard {
+    padding: 24px 20px;
+  }
+
+  .section-heading {
+    align-items: flex-start;
     flex-direction: column;
   }
 }
