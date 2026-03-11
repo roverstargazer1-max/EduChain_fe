@@ -1,7 +1,7 @@
 <template>
     <div class="placeholder-page">
-        <h1>Library</h1>
-        <p>This page is under construction.</p>
+        <h1>资料库</h1>
+        <p>此页面正在建设中。</p>
     </div>
 </template>
 

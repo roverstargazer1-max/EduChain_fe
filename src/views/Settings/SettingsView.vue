@@ -1,7 +1,7 @@
 <template>
     <div class="placeholder-page">
-        <h1>Settings</h1>
-        <p>This page is under construction.</p>
+        <h1>设置</h1>
+        <p>此页面正在建设中。</p>
     </div>
 </template>
 

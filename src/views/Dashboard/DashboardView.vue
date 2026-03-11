@@ -2,20 +2,20 @@
   <div class="dashboard">
     <!-- Welcome Section -->
     <section class="welcome-section">
-      <h1 class="welcome-title">Welcome back, Dr. Student</h1>
-      <p class="welcome-subtitle">Ready to continue your clinical reasoning training?</p>
+      <h1 class="welcome-title">欢迎回来！</h1>
+      <p class="welcome-subtitle">准备好继续你的临床推理训练了吗？</p>
     </section>
 
     <!-- Stats Row -->
     <section class="stats-row">
-      <StatsCard label="Cases Completed" value="12" badge="+2 this week" badge-type="info" />
-      <StatsCard label="Avg. Accuracy" value="87%" badge="+1.5%" badge-type="success" />
-      <StatsCard label="Mentor Feedback" value="5 New" badge="Review pending" badge-type="warning" />
+      <StatsCard label="已完成病例" value="12" badge="本周新增 2 例" badge-type="info" />
+      <StatsCard label="平均准确率" value="87%" badge="提升 1.5%" badge-type="success" />
+      <StatsCard label="导师反馈" value="5 条新反馈" badge="待查看" badge-type="warning" />
     </section>
 
     <!-- Recommended Cases -->
     <section class="cases-section">
-      <h2 class="section-title">Recommended Cases</h2>
+      <h2 class="section-title">推荐病例</h2>
       <div class="cases-row">
         <CaseCard v-for="item in recommendedCases" :key="item.title" :level="item.level" :category="item.category"
           :title="item.title" :description="item.description" @start="handleStartSimulation(item)" />
@@ -38,26 +38,26 @@ interface CaseItem {
 const recommendedCases: CaseItem[] = [
   {
     level: 'Intermediate',
-    category: 'Cardiology',
-    title: 'Acute Chest Pain',
-    description: '56M presenting with sudden onset substernal chest pressure.',
+    category: '心血管内科',
+    title: '急性胸痛',
+    description: '56 岁男性，突发胸骨后压榨样疼痛就诊。',
   },
   {
     level: 'Beginner',
-    category: 'Pulmonology',
-    title: 'Persistent Cough',
-    description: '34F with 3-week history of dry cough and low-grade fever.',
+    category: '呼吸内科',
+    title: '持续性咳嗽',
+    description: '34 岁女性，干咳伴低热已持续 3 周。',
   },
   {
     level: 'Advanced',
-    category: 'Gastroenterology',
-    title: 'Abdominal Pain',
-    description: '45M with severe RLQ pain and nausea.',
+    category: '消化内科',
+    title: '腹痛',
+    description: '45 岁男性，右下腹剧烈疼痛并伴有恶心。',
   },
 ]
 
 function handleStartSimulation(item: CaseItem) {
-  console.log('Starting simulation:', item.title)
+  console.log('开始模拟:', item.title)
 }
 </script>
 

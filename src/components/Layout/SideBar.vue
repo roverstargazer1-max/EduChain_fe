@@ -18,7 +18,7 @@
     <!-- Navigation -->
     <nav class="sidebar-nav">
       <div class="nav-group">
-        <span v-show="!isCollapsed" class="nav-group-label">PLATFORM</span>
+        <span v-show="!isCollapsed" class="nav-group-label">平台</span>
         <router-link v-for="item in platformItems" :key="item.path" :to="item.path" class="nav-item"
           active-class="nav-item--active">
           <span class="nav-icon" v-html="item.icon"></span>
@@ -27,7 +27,7 @@
       </div>
 
       <div class="nav-group">
-        <span v-show="!isCollapsed" class="nav-group-label">RESOURCES</span>
+        <span v-show="!isCollapsed" class="nav-group-label">资源</span>
         <router-link v-for="item in resourceItems" :key="item.path" :to="item.path" class="nav-item"
           active-class="nav-item--active">
           <span class="nav-icon" v-html="item.icon"></span>
@@ -40,7 +40,7 @@
     <div class="sidebar-bottom">
       <button class="nav-item logout-btn">
         <span class="nav-icon" v-html="iconLogout"></span>
-        <span v-show="!isCollapsed" class="nav-label">Log Out</span>
+        <span v-show="!isCollapsed" class="nav-label">退出登录</span>
       </button>
     </div>
   </aside>
@@ -66,14 +66,14 @@ defineEmits<{
 }>()
 
 const platformItems = [
-  { label: 'Dashboard', path: '/', icon: iconDashboard },
-  { label: 'Clinical Cases', path: '/clinical-cases', icon: iconCases },
-  { label: 'Performance', path: '/performance', icon: iconPerformance },
+  { label: '首页', path: '/', icon: iconDashboard },
+  { label: '临床病例', path: '/clinical-cases', icon: iconCases },
+  { label: '表现', path: '/performance', icon: iconPerformance },
 ]
 
 const resourceItems = [
-  { label: 'Library', path: '/library', icon: iconLibrary },
-  { label: 'Settings', path: '/settings', icon: iconSettings },
+  { label: '资料库', path: '/library', icon: iconLibrary },
+  { label: '设置', path: '/settings', icon: iconSettings },
 ]
 </script>
 

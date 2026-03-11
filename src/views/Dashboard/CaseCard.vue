@@ -1,13 +1,13 @@
 <template>
   <div class="case-card">
     <div class="case-header">
-      <span class="case-level" :class="levelClass">{{ level }}</span>
+      <span class="case-level" :class="levelClass">{{ displayLevel }}</span>
       <span class="case-category">{{ category }}</span>
     </div>
     <h3 class="case-title">{{ title }}</h3>
     <p class="case-description">{{ description }}</p>
     <a href="#" class="case-link" @click.prevent="$emit('start')">
-      Start Simulation →
+      开始模拟 →
     </a>
   </div>
 </template>
@@ -31,6 +31,14 @@ const levelClass = computed(() => {
   if (l === 'beginner') return 'level-beginner'
   if (l === 'intermediate') return 'level-intermediate'
   if (l === 'advanced') return 'level-advanced'
+  return ''
+})
+
+const displayLevel = computed(() => {
+  const l = props.level.toLowerCase()
+  if (l === 'beginner') return '初级'
+  if (l === 'intermediate') return '中级'
+  if (l === 'advanced') return '高级'
   return ''
 })
 </script>
