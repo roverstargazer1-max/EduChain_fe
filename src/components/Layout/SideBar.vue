@@ -20,7 +20,7 @@
       <div class="nav-group">
         <span v-show="!isCollapsed" class="nav-group-label">平台</span>
         <router-link v-for="item in platformItems" :key="item.path" :to="item.path" class="nav-item"
-          active-class="nav-item--active">
+          :class="{ 'nav-item--active': isActiveRoute(item.path) }">
           <span class="nav-icon" v-html="item.icon"></span>
           <span v-show="!isCollapsed" class="nav-label">{{ item.label }}</span>
         </router-link>
@@ -29,7 +29,7 @@
       <div class="nav-group">
         <span v-show="!isCollapsed" class="nav-group-label">资源</span>
         <router-link v-for="item in resourceItems" :key="item.path" :to="item.path" class="nav-item"
-          active-class="nav-item--active">
+          :class="{ 'nav-item--active': isActiveRoute(item.path) }">
           <span class="nav-icon" v-html="item.icon"></span>
           <span v-show="!isCollapsed" class="nav-label">{{ item.label }}</span>
         </router-link>
@@ -48,6 +48,7 @@
 
 <script setup lang="ts">
 //图标
+import { useRoute } from 'vue-router'
 import {
   iconDashboard,
   iconCases,
@@ -65,6 +66,8 @@ defineEmits<{
   'toggle-collapse': []
 }>()
 
+const route = useRoute()
+
 const platformItems = [
   { label: '首页', path: '/', icon: iconDashboard },
   { label: '临床病例', path: '/clinical-cases', icon: iconCases },
@@ -75,6 +78,14 @@ const resourceItems = [
   { label: '资料库', path: '/library', icon: iconLibrary },
   { label: '设置', path: '/settings', icon: iconSettings },
 ]
+
+function isActiveRoute(path: string): boolean {
+  if (path === '/') {
+    return route.path === '/'
+  }
+
+  return route.path === path || route.path.startsWith(`${path}/`)
+}
 </script>
 
 <style scoped>

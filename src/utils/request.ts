@@ -58,7 +58,7 @@ function normalizeHttpError(error: AxiosError<ApiResponseBase>): string {
 	}
 
 	if (error.message === 'Network Error') {
-		return '网络异常，请检查服务是否启动'
+		return '网络异常，可能是服务不可达或跨域配置缺失'
 	}
 
 	switch (error.response?.status) {
