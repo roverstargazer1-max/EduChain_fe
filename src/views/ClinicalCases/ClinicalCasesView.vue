@@ -269,7 +269,12 @@ function getMessageRowClass(message: ChatMessage): 'chat-row--left' | 'chat-row-
     return 'chat-row--right'
   }
 
-  if (message.kind === 'notice' || message.kind === 'error') {
+  if (
+    message.kind === 'notice' ||
+    message.kind === 'error' ||
+    message.kind === 'confirm_exam' ||
+    message.kind === 'exam_result'
+  ) {
     return 'chat-row--center'
   }
 
@@ -579,11 +584,17 @@ async function submitExamDecision(messageId: number, confirmed: boolean) {
     return
   }
 
+  if (!sessionId.value) {
+    pushErrorMessage('会话已失效，请重新开始问诊后再确认检查。')
+    return
+  }
+
   target.loading = true
   try {
     const res = await confirmPatientExam(displayCaseId.value, {
       confirm_token: target.confirmToken,
       confirmed,
+      session_id: sessionId.value,
     })
     target.resolved = confirmed ? 'confirmed' : 'cancelled'
     handleConversationResponse(res)
