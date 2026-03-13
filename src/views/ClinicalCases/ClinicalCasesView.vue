@@ -199,7 +199,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  chatWithPatient,
+  chatWithPatientStream,
   confirmPatientExam,
   getPatientCaseDetail,
   type ExamConfirmData,
@@ -483,10 +483,69 @@ async function sendQuestion() {
 
   isSending.value = true
   try {
-    const res = await chatWithPatient(displayCaseId.value, {
-      user_input: value,
-      session_id: sessionId.value,
-    })
+    let streamingMessageId: number | null = null
+
+    const res = await chatWithPatientStream(
+      displayCaseId.value,
+      {
+        user_input: value,
+        session_id: sessionId.value,
+      },
+      {
+        onDelta: (delta) => {
+          if (!delta) {
+            return
+          }
+
+          if (streamingMessageId === null) {
+            streamingMessageId = nextMessageId()
+            appendMessage({
+              id: streamingMessageId,
+              kind: 'chat',
+              content: delta,
+              time: nowTimeLabel(),
+            })
+            return
+          }
+
+          const streamingMessage = chatMessages.value.find(
+            (message): message is PatientChatMessage =>
+              message.id === streamingMessageId && message.kind === 'chat',
+          )
+
+          if (!streamingMessage) {
+            return
+          }
+
+          streamingMessage.content += delta
+          void scrollChatToBottom()
+        },
+      },
+    )
+
+    if (res.action === 'chat') {
+      const data = res.data as PatientReplyData
+      saveSessionId(data.session_id)
+
+      if (streamingMessageId === null) {
+        pushPatientMessage(data)
+        return
+      }
+
+      const streamingMessage = chatMessages.value.find(
+        (message): message is PatientChatMessage =>
+          message.id === streamingMessageId && message.kind === 'chat',
+      )
+
+      if (streamingMessage) {
+        // 以服务端最终文本为准，避免 token 拼接误差
+        streamingMessage.content = data.reply
+      } else {
+        pushPatientMessage(data)
+      }
+      return
+    }
+
     handleConversationResponse(res)
   } catch (error) {
     pushErrorMessage(normalizeErrorMessage(error))

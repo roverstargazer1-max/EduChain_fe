@@ -1,5 +1,8 @@
 import request, { type ApiResponseBase } from '@/utils/request'
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
+const successCode = 20000
+
 export interface PaginationParams {
   page?: number
   page_size?: number
@@ -94,6 +97,155 @@ export type PatientConversationData =
 export interface PatientConversationResponse extends ApiResponseBase {
   action: PatientAction
   data: PatientConversationData
+}
+
+export interface PatientStreamHandlers {
+  onDelta?: (delta: string) => void
+}
+
+function buildStreamUrl(path: string): string {
+  if (!apiBaseUrl) {
+    return path
+  }
+  return `${apiBaseUrl.replace(/\/$/, '')}${path}`
+}
+
+function parseSseBlock(rawBlock: string): { event: string; data: unknown } | null {
+  const lines = rawBlock.split('\n')
+  let eventName = 'message'
+  const dataLines: string[] = []
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd()
+    if (!line || line.startsWith(':')) {
+      continue
+    }
+
+    if (line.startsWith('event:')) {
+      eventName = line.slice('event:'.length).trim()
+      continue
+    }
+
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice('data:'.length).trimStart())
+    }
+  }
+
+  if (!dataLines.length) {
+    return null
+  }
+
+  const payload = dataLines.join('\n')
+  try {
+    return {
+      event: eventName,
+      data: JSON.parse(payload),
+    }
+  } catch {
+    return {
+      event: eventName,
+      data: payload,
+    }
+  }
+}
+
+export async function chatWithPatientStream(
+  caseId: string,
+  payload: PatientChatRequest,
+  handlers: PatientStreamHandlers = {},
+): Promise<PatientConversationResponse> {
+  const response = await fetch(buildStreamUrl(`/api/v1/patient/${caseId}/chat/stream`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    throw new Error(`请求失败（HTTP ${response.status}）`)
+  }
+
+  if (!response.body) {
+    throw new Error('当前浏览器不支持流式读取')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+
+  let buffer = ''
+  let finalResult: PatientConversationResponse | null = null
+
+  const handleBlock = (block: string) => {
+    const parsed = parseSseBlock(block)
+    if (!parsed) {
+      return
+    }
+
+    if (parsed.event === 'delta') {
+      const eventData = parsed.data as { delta?: unknown }
+      if (typeof eventData?.delta === 'string' && eventData.delta) {
+        handlers.onDelta?.(eventData.delta)
+      }
+      return
+    }
+
+    if (parsed.event === 'result') {
+      const eventData = parsed.data as {
+        action?: unknown
+        data?: unknown
+      }
+
+      const action: PatientAction =
+        typeof eventData.action === 'string'
+          ? (eventData.action as PatientAction)
+          : 'error'
+
+      finalResult = {
+        code: successCode,
+        msg: '成功',
+        action,
+        data: (eventData.data ?? {}) as PatientConversationData,
+      }
+      return
+    }
+
+    if (parsed.event === 'error') {
+      const eventData = parsed.data as { msg?: unknown }
+      if (typeof eventData?.msg === 'string' && eventData.msg) {
+        throw new Error(eventData.msg)
+      }
+      throw new Error('流式请求失败')
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, { stream: true })
+    const normalized = buffer.replace(/\r\n/g, '\n')
+    const blocks = normalized.split('\n\n')
+    buffer = blocks.pop() ?? ''
+
+    for (const block of blocks) {
+      handleBlock(block)
+    }
+  }
+
+  buffer += decoder.decode()
+  const finalBlock = buffer.trim()
+  if (finalBlock) {
+    handleBlock(finalBlock)
+  }
+
+  if (!finalResult) {
+    throw new Error('流式响应结束，但未收到最终结果')
+  }
+
+  return finalResult
 }
 
 // 获取病人病例列表
