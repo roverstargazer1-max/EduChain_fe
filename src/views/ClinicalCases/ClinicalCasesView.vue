@@ -31,19 +31,88 @@
           <button class="ghost-btn" type="button" @click="showSummary = true">查看病情概要</button>
         </div>
 
-        <div class="chat-area">
+        <div ref="chatAreaRef" class="chat-area">
           <div class="timeline-tip">今天 09:41</div>
 
-          <div v-for="item in chatMessages" :key="item.id" class="chat-bubble"
-            :class="item.role === 'doctor' ? 'chat-bubble--doctor' : 'chat-bubble--patient'">
-            <p>{{ item.content }}</p>
-            <small>{{ item.time }}</small>
+          <div v-if="chatMessages.length === 0" class="chat-empty">
+            开始问诊后，病人回复、系统提示与检查确认会显示在这里。
+          </div>
+
+          <div v-for="item in chatMessages" :key="item.id">
+            <div v-if="item.kind === 'doctor' || item.kind === 'chat'" class="chat-bubble"
+              :class="item.kind === 'doctor' ? 'chat-bubble--doctor' : 'chat-bubble--patient'">
+              <p>{{ item.content }}</p>
+              <small>{{ item.time }}</small>
+            </div>
+
+            <div v-else-if="item.kind === 'confirm_exam'" class="action-card action-card--confirm">
+              <div class="action-card__head">
+                <strong>待确认检查</strong>
+                <span>{{ item.time }}</span>
+              </div>
+              <p class="action-card__text">{{ item.content }}</p>
+              <ul v-if="item.examList.length" class="exam-list">
+                <li v-for="exam in item.examList" :key="`${item.id}-${exam}`">{{ exam }}</li>
+              </ul>
+              <p v-if="item.unmatchedExams.length" class="exam-unmatched">
+                未匹配检查：{{ item.unmatchedExams.join('、') }}
+              </p>
+
+              <div v-if="!item.resolved" class="confirm-actions">
+                <button class="confirm-btn" type="button" :disabled="item.loading"
+                  @click="submitExamDecision(item.id, true)">
+                  {{ item.loading ? '处理中...' : '确认执行' }}
+                </button>
+                <button class="cancel-btn" type="button" :disabled="item.loading"
+                  @click="submitExamDecision(item.id, false)">
+                  暂不执行
+                </button>
+              </div>
+
+              <p v-else class="confirm-state">
+                {{ item.resolved === 'confirmed' ? '已确认执行该检查。' : '已取消该检查。' }}
+              </p>
+            </div>
+
+            <div v-else-if="item.kind === 'notice'" class="action-card action-card--notice"
+              :class="`action-card--notice-${item.level}`">
+              <div class="action-card__head">
+                <strong>系统提示</strong>
+                <span>{{ item.time }}</span>
+              </div>
+              <p class="action-card__text">{{ item.content }}</p>
+            </div>
+
+            <div v-else-if="item.kind === 'error'" class="action-card action-card--error">
+              <div class="action-card__head">
+                <strong>业务异常</strong>
+                <span>{{ item.time }}</span>
+              </div>
+              <p class="action-card__text">{{ item.content }}</p>
+            </div>
+
+            <div v-else class="action-card action-card--result">
+              <div class="action-card__head">
+                <strong>检查结果</strong>
+                <span>{{ item.time }}</span>
+              </div>
+              <p v-if="item.content" class="action-card__text">{{ item.content }}</p>
+              <div v-if="item.results.length" class="result-list">
+                <article v-for="result in item.results" :key="`${item.id}-${result.exam_name}`" class="result-item">
+                  <h5>{{ result.exam_name }}</h5>
+                  <p>{{ result.result }}</p>
+                </article>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="chat-input">
-          <input v-model="questionInput" type="text" placeholder="向患者提问，例如：疼痛持续多久？" @keydown.enter="sendQuestion" />
-          <button class="send-btn" type="button" @click="sendQuestion">发送</button>
+          <input v-model="questionInput" type="text" placeholder="向患者提问，例如：疼痛持续多久？" :disabled="isSending"
+            @keydown.enter.prevent="sendQuestion" />
+          <button class="send-btn" type="button" :disabled="isSending" @click="sendQuestion">
+            {{ isSending ? '发送中...' : '发送' }}
+          </button>
         </div>
       </section>
 
@@ -127,19 +196,71 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { getPatientCaseDetail } from '@/api/ patient/patientApi'
-import type { PatientCaseSummary } from '@/api/ patient/patientApi'
+import {
+  chatWithPatient,
+  confirmPatientExam,
+  getPatientCaseDetail,
+  type ExamConfirmData,
+  type ExamResultData,
+  type ExamResultItem,
+  type NoticeData,
+  type PatientCaseSummary,
+  type PatientConversationResponse,
+  type PatientReplyData,
+} from '@/api/ patient/patientApi'
 
-type ChatRole = 'doctor' | 'patient'
-
-interface ChatMessage {
+interface ChatMessageBase {
   id: number
-  role: ChatRole
-  content: string
   time: string
+  kind: 'doctor' | 'chat' | 'confirm_exam' | 'notice' | 'error' | 'exam_result'
 }
+
+interface DoctorMessage extends ChatMessageBase {
+  kind: 'doctor'
+  content: string
+}
+
+interface PatientChatMessage extends ChatMessageBase {
+  kind: 'chat'
+  content: string
+}
+
+interface ConfirmExamMessage extends ChatMessageBase {
+  kind: 'confirm_exam'
+  content: string
+  examList: string[]
+  unmatchedExams: string[]
+  confirmToken: string
+  loading: boolean
+  resolved?: 'confirmed' | 'cancelled'
+}
+
+interface NoticeMessage extends ChatMessageBase {
+  kind: 'notice'
+  content: string
+  level: 'info' | 'warning' | 'error'
+}
+
+interface ErrorMessage extends ChatMessageBase {
+  kind: 'error'
+  content: string
+}
+
+interface ExamResultMessage extends ChatMessageBase {
+  kind: 'exam_result'
+  content: string
+  results: ExamResultItem[]
+}
+
+type ChatMessage =
+  | DoctorMessage
+  | PatientChatMessage
+  | ConfirmExamMessage
+  | NoticeMessage
+  | ErrorMessage
+  | ExamResultMessage
 
 const route = useRoute()
 const displayCaseId = computed(() => String(route.query.caseId ?? '1042'))
@@ -147,6 +268,11 @@ const displayCaseId = computed(() => String(route.query.caseId ?? '1042'))
 const caseDetail = ref<PatientCaseSummary | null>(null)
 const caseLoadError = ref('')
 const showSummary = ref(false)
+const sessionId = ref<string | null>(null)
+const isSending = ref(false)
+const chatAreaRef = ref<HTMLElement | null>(null)
+
+let messageSeed = 0
 
 const difficultyLabel: Record<string, string> = {
   beginner: '入门',
@@ -169,9 +295,13 @@ async function loadCaseDetail() {
   try {
     const res = await getPatientCaseDetail(id)
     caseDetail.value = res.data
+    caseLoadError.value = ''
+    sessionId.value = null
+    chatMessages.value = []
     // 重置学生笔记表单
     form.value = { complaint: '', onset: '', severity: '', quality: '', associated: '' }
   } catch {
+    caseDetail.value = null
     caseLoadError.value = '案例背景加载失败'
   }
 }
@@ -188,9 +318,7 @@ const tabs = [
 
 const activeTab = ref<(typeof tabs)[number]['value']>('emr')
 
-const chatMessages = ref<ChatMessage[]>([
-
-])
+const chatMessages = ref<ChatMessage[]>([])
 
 const questionInput = ref('')
 
@@ -202,20 +330,186 @@ const form = ref({
   associated: '',
 })
 
-function sendQuestion() {
+function nowTimeLabel(): string {
+  return new Date().toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+function nextMessageId(): number {
+  messageSeed += 1
+  return messageSeed
+}
+
+async function scrollChatToBottom() {
+  await nextTick()
+  if (!chatAreaRef.value) return
+  chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight
+}
+
+function appendMessage(message: ChatMessage) {
+  chatMessages.value.push(message)
+  void scrollChatToBottom()
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  return '请求失败，请稍后重试。'
+}
+
+function saveSessionId(value: unknown) {
+  if (typeof value === 'string' && value.trim()) {
+    sessionId.value = value
+  }
+}
+
+function pushDoctorMessage(content: string) {
+  appendMessage({
+    id: nextMessageId(),
+    kind: 'doctor',
+    content,
+    time: nowTimeLabel(),
+  })
+}
+
+function pushPatientMessage(data: PatientReplyData) {
+  appendMessage({
+    id: nextMessageId(),
+    kind: 'chat',
+    content: data.reply,
+    time: nowTimeLabel(),
+  })
+}
+
+function pushConfirmExamMessage(data: ExamConfirmData) {
+  appendMessage({
+    id: nextMessageId(),
+    kind: 'confirm_exam',
+    content: data.message,
+    examList: data.exam_list,
+    unmatchedExams: data.unmatched_exams,
+    confirmToken: data.confirm_token,
+    loading: false,
+    time: nowTimeLabel(),
+  })
+}
+
+function pushNoticeMessage(data: NoticeData) {
+  appendMessage({
+    id: nextMessageId(),
+    kind: 'notice',
+    content: data.message,
+    level: data.level,
+    time: nowTimeLabel(),
+  })
+}
+
+function pushErrorMessage(content: string) {
+  appendMessage({
+    id: nextMessageId(),
+    kind: 'error',
+    content,
+    time: nowTimeLabel(),
+  })
+}
+
+function pushExamResultMessage(data: ExamResultData) {
+  appendMessage({
+    id: nextMessageId(),
+    kind: 'exam_result',
+    content: data.message,
+    results: data.results,
+    time: nowTimeLabel(),
+  })
+}
+
+function handleConversationResponse(response: PatientConversationResponse) {
+  switch (response.action) {
+    case 'chat': {
+      const data = response.data as PatientReplyData
+      saveSessionId(data.session_id)
+      pushPatientMessage(data)
+      break
+    }
+    case 'confirm_exam': {
+      const data = response.data as ExamConfirmData
+      saveSessionId(data.session_id)
+      pushConfirmExamMessage(data)
+      break
+    }
+    case 'notice': {
+      const data = response.data as NoticeData
+      saveSessionId(data.session_id)
+      pushNoticeMessage(data)
+      break
+    }
+    case 'exam_result': {
+      const data = response.data as ExamResultData
+      saveSessionId(data.session_id)
+      pushExamResultMessage(data)
+      break
+    }
+    case 'error':
+    default:
+      pushErrorMessage(response.msg || '出现业务异常，请稍后重试。')
+      break
+  }
+}
+
+async function sendQuestion() {
   const value = questionInput.value.trim()
-  if (!value) {
+  if (!value || isSending.value) {
     return
   }
 
-  const nextId = chatMessages.value.length + 1
-  chatMessages.value.push({
-    id: nextId,
-    role: 'doctor',
-    content: value,
-    time: '刚刚',
-  })
+  pushDoctorMessage(value)
   questionInput.value = ''
+
+  isSending.value = true
+  try {
+    const res = await chatWithPatient(displayCaseId.value, {
+      user_input: value,
+      session_id: sessionId.value,
+    })
+    handleConversationResponse(res)
+  } catch (error) {
+    pushErrorMessage(normalizeErrorMessage(error))
+  } finally {
+    isSending.value = false
+  }
+}
+
+function isConfirmExamMessage(message: ChatMessage): message is ConfirmExamMessage {
+  return message.kind === 'confirm_exam'
+}
+
+async function submitExamDecision(messageId: number, confirmed: boolean) {
+  const target = chatMessages.value.find(
+    (message): message is ConfirmExamMessage =>
+      message.id === messageId && isConfirmExamMessage(message),
+  )
+
+  if (!target || target.loading || target.resolved) {
+    return
+  }
+
+  target.loading = true
+  try {
+    const res = await confirmPatientExam(displayCaseId.value, {
+      confirm_token: target.confirmToken,
+      confirmed,
+    })
+    target.resolved = confirmed ? 'confirmed' : 'cancelled'
+    handleConversationResponse(res)
+  } catch (error) {
+    pushErrorMessage(normalizeErrorMessage(error))
+  } finally {
+    target.loading = false
+  }
 }
 </script>
 
@@ -448,6 +742,16 @@ function sendQuestion() {
   padding: 4px 8px;
 }
 
+.chat-empty {
+  margin: 28px auto;
+  font-size: 12px;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
 .chat-bubble {
   max-width: 72%;
   border-radius: 12px;
@@ -478,6 +782,171 @@ function sendQuestion() {
   background: #dbeafe;
   color: #1e3a8a;
   align-self: flex-end;
+}
+
+.action-card {
+  align-self: flex-start;
+  width: min(86%, 580px);
+  border-radius: 12px;
+  border: 1px solid #dbe1ea;
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+.action-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.action-card__head strong {
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.action-card__head span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.action-card__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #334155;
+  white-space: pre-line;
+}
+
+.action-card--confirm {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.exam-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.exam-list li+li {
+  margin-top: 5px;
+}
+
+.exam-unmatched {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.confirm-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.confirm-btn,
+.cancel-btn {
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.confirm-btn {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.confirm-btn:hover {
+  background: #1e40af;
+}
+
+.cancel-btn {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.cancel-btn:hover {
+  background: #cbd5e1;
+}
+
+.confirm-btn:disabled,
+.cancel-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.confirm-state {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #334155;
+}
+
+.action-card--notice {
+  background: #f8fafc;
+}
+
+.action-card--notice-info {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.action-card--notice-warning {
+  border-color: #facc15;
+  background: #fefce8;
+}
+
+.action-card--notice-error {
+  border-color: #fda4af;
+  background: #fff1f2;
+}
+
+.action-card--error {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.action-card--result {
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+.result-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.result-item {
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.result-item h5 {
+  margin: 0;
+  font-size: 12px;
+  color: #1d4ed8;
+}
+
+.result-item p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #1f2937;
+  white-space: pre-line;
 }
 
 .chat-input {
@@ -512,6 +981,11 @@ function sendQuestion() {
   font-weight: 700;
   padding: 0 14px;
   cursor: pointer;
+}
+
+.send-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .background-box {
@@ -709,6 +1183,10 @@ function sendQuestion() {
 
   .chat-bubble {
     max-width: 92%;
+  }
+
+  .action-card {
+    width: 100%;
   }
 
   .form-grid {
