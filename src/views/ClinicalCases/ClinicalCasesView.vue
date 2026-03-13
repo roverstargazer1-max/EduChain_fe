@@ -203,6 +203,8 @@ import {
   chatWithPatientStream,
   confirmPatientExam,
   getPatientCaseDetail,
+  getPatientSessionTimeline,
+  getPatientSessions,
   patientChatStreamEnabled,
   type ExamConfirmData,
   type ExamResultData,
@@ -211,6 +213,7 @@ import {
   type PatientCaseSummary,
   type PatientConversationResponse,
   type PatientReplyData,
+  type TimelineEventItem,
 } from '@/api/ patient/patientApi'
 
 interface ChatMessageBase {
@@ -243,6 +246,7 @@ interface NoticeMessage extends ChatMessageBase {
   kind: 'notice'
   content: string
   level: 'info' | 'warning' | 'error'
+  intent?: string | null
 }
 
 interface ErrorMessage extends ChatMessageBase {
@@ -281,8 +285,26 @@ function getMessageRowClass(message: ChatMessage): 'chat-row--left' | 'chat-row-
   return 'chat-row--left'
 }
 
+function getQueryStringValue(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+
+  if (Array.isArray(value)) {
+    const firstValid = value.find((item): item is string => typeof item === 'string' && !!item.trim())
+    if (firstValid) {
+      return firstValid.trim()
+    }
+  }
+
+  return null
+}
+
 const route = useRoute()
-const displayCaseId = computed(() => String(route.query.caseId ?? '1042'))
+const displayCaseId = computed(() => getQueryStringValue(route.query.caseId) ?? '1042')
+const preferredSessionId = computed(() =>
+  getQueryStringValue(route.query.sessionId ?? route.query.session_id),
+)
 
 const caseDetail = ref<PatientCaseSummary | null>(null)
 const caseLoadError = ref('')
@@ -311,14 +333,27 @@ const patientSubtitle = computed(() => {
 
 async function loadCaseDetail() {
   const id = displayCaseId.value
+  sessionId.value = null
+  chatMessages.value = []
+  messageSeed = 0
+  questionInput.value = ''
+  // 重置学生笔记表单
+  form.value = { complaint: '', onset: '', severity: '', quality: '', associated: '' }
+
   try {
     const res = await getPatientCaseDetail(id)
     caseDetail.value = res.data
     caseLoadError.value = ''
-    sessionId.value = null
-    chatMessages.value = []
-    // 重置学生笔记表单
-    form.value = { complaint: '', onset: '', severity: '', quality: '', associated: '' }
+
+    try {
+      await restoreConversationHistory(id)
+    } catch {
+      pushNoticeMessage({
+        session_id: '',
+        message: '历史会话恢复失败，已为你开启新会话。',
+        level: 'warning',
+      })
+    }
   } catch {
     caseDetail.value = null
     caseLoadError.value = '案例背景加载失败'
@@ -423,6 +458,7 @@ function pushNoticeMessage(data: NoticeData) {
     kind: 'notice',
     content: data.message,
     level: data.level,
+    intent: data.intent,
     time: nowTimeLabel(),
   })
 }
@@ -444,6 +480,219 @@ function pushExamResultMessage(data: ExamResultData) {
     results: data.results,
     time: nowTimeLabel(),
   })
+}
+
+function parseTimelineTimeLabel(createdAt: string): string {
+  const value = new Date(createdAt)
+  if (Number.isNaN(value.getTime())) {
+    return nowTimeLabel()
+  }
+
+  return value.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+function pickString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function pickStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.filter((item): item is string => typeof item === 'string' && !!item.trim())
+}
+
+function pickExamResults(value: unknown): ExamResultItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const result: ExamResultItem[] = []
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object') {
+      continue
+    }
+
+    const itemObj = item as Record<string, unknown>
+    const examName = pickString(itemObj['exam_name'])
+    const examResult = pickString(itemObj['result'])
+
+    if (!examName && !examResult) {
+      continue
+    }
+
+    result.push({
+      exam_name: examName || '检查项目',
+      result: examResult,
+    })
+  }
+
+  return result
+}
+
+function buildMessageFromTimelineEvent(event: TimelineEventItem): ChatMessage | null {
+  const payload =
+    event.data && typeof event.data === 'object' ? event.data : ({} as Record<string, unknown>)
+  const time = parseTimelineTimeLabel(event.created_at)
+
+  switch (event.action) {
+    case 'doctor_input': {
+      const content = pickString(payload['message']) || pickString(payload['user_input'])
+      if (!content) {
+        return null
+      }
+
+      return {
+        id: nextMessageId(),
+        kind: 'doctor',
+        content,
+        time,
+      }
+    }
+    case 'chat': {
+      const content = pickString(payload['reply'])
+      if (!content) {
+        return null
+      }
+
+      return {
+        id: nextMessageId(),
+        kind: 'chat',
+        content,
+        time,
+      }
+    }
+    case 'confirm_exam': {
+      const confirmToken = pickString(payload['confirm_token'])
+      const message: ConfirmExamMessage = {
+        id: nextMessageId(),
+        kind: 'confirm_exam',
+        content: pickString(payload['message']) || '待确认检查',
+        examList: pickStringArray(payload['exam_list']),
+        unmatchedExams: pickStringArray(payload['unmatched_exams']),
+        confirmToken,
+        loading: false,
+        time,
+      }
+
+      if (!confirmToken) {
+        message.resolved = 'cancelled'
+      }
+
+      return message
+    }
+    case 'notice': {
+      const rawLevel = pickString(payload['level'])
+      const level: NoticeMessage['level'] =
+        rawLevel === 'warning' || rawLevel === 'error' ? rawLevel : 'info'
+
+      return {
+        id: nextMessageId(),
+        kind: 'notice',
+        content: pickString(payload['message']) || '系统提示',
+        level,
+        intent: pickString(payload['intent']) || null,
+        time,
+      }
+    }
+    case 'exam_result': {
+      return {
+        id: nextMessageId(),
+        kind: 'exam_result',
+        content: pickString(payload['message']),
+        results: pickExamResults(payload['results']),
+        time,
+      }
+    }
+    case 'error': {
+      return {
+        id: nextMessageId(),
+        kind: 'error',
+        content:
+          pickString(payload['message']) || pickString(payload['msg']) || '出现业务异常，请稍后重试。',
+        time,
+      }
+    }
+    default:
+      return null
+  }
+}
+
+function syncHistoricalConfirmStatus(messages: ChatMessage[]) {
+  const pendingConfirmMessages: ConfirmExamMessage[] = []
+
+  for (const message of messages) {
+    if (message.kind === 'confirm_exam' && !message.resolved) {
+      pendingConfirmMessages.push(message)
+      continue
+    }
+
+    if (message.kind === 'exam_result') {
+      const target = pendingConfirmMessages.pop()
+      if (target) {
+        target.resolved = 'confirmed'
+      }
+      continue
+    }
+
+    if (message.kind === 'notice' && message.intent === 'examination_cancelled') {
+      const target = pendingConfirmMessages.pop()
+      if (target) {
+        target.resolved = 'cancelled'
+      }
+    }
+  }
+}
+
+function parseDateValue(value: string): number {
+  const result = Date.parse(value)
+  return Number.isNaN(result) ? 0 : result
+}
+
+async function resolveResumeSessionId(caseId: string): Promise<string | null> {
+  if (preferredSessionId.value) {
+    return preferredSessionId.value
+  }
+
+  try {
+    const res = await getPatientSessions(caseId)
+    if (!res.data.length) {
+      return null
+    }
+
+    const activeSessions = res.data.filter((item) => item.status === 'active')
+    const candidates = activeSessions.length ? activeSessions : res.data
+    const latestSession = [...candidates].sort(
+      (left, right) => parseDateValue(right.updated_at) - parseDateValue(left.updated_at),
+    )[0]
+
+    return latestSession?.session_id ?? null
+  } catch {
+    return null
+  }
+}
+
+async function restoreConversationHistory(caseId: string) {
+  const resumeSession = await resolveResumeSessionId(caseId)
+  if (!resumeSession) {
+    return
+  }
+
+  const res = await getPatientSessionTimeline(resumeSession)
+  const restoredMessages = res.data
+    .map((event) => buildMessageFromTimelineEvent(event))
+    .filter((message): message is ChatMessage => message !== null)
+
+  syncHistoricalConfirmStatus(restoredMessages)
+  chatMessages.value = restoredMessages
+  sessionId.value = resumeSession
+  await scrollChatToBottom()
 }
 
 function handleConversationResponse(response: PatientConversationResponse) {
