@@ -13,7 +13,7 @@
 
       <div v-if="isLoading" class="status-panel">
         <h3 class="status-title">病例加载中</h3>
-        <p class="status-text">正在从后端同步全部病例详情，请稍候。</p>
+        <p class="status-text">正在从后端同步病例列表，请稍候。</p>
       </div>
 
       <div v-else-if="loadError" class="status-panel status-panel--error">
@@ -41,16 +41,19 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import CaseCard from './CaseCard.vue'
 import type { PatientCaseSummary } from '@/api/ patient/patientApi'
-import { getPatientCaseDetail, getPatientCases } from '@/api/ patient/patientApi'
+import { getPatientCases } from '@/api/ patient/patientApi'
 
 const router = useRouter()
 const patientCases = ref<PatientCaseSummary[]>([])
 const isLoading = ref(false)
 const loadError = ref('')
-const defaultCasesPageSize = 8
+const dashboardCasePageSize = 50
 
 async function fetchAllCaseSummaries(): Promise<PatientCaseSummary[]> {
-  const firstPageResponse = await getPatientCases({ page: 1, page_size: defaultCasesPageSize })
+  const firstPageResponse = await getPatientCases({
+    page: 1,
+    page_size: dashboardCasePageSize,
+  })
   const { cases, total_pages: totalPages, page_size: pageSize } = firstPageResponse.data
 
   if (totalPages <= 1) {
@@ -79,12 +82,7 @@ async function loadCases() {
   loadError.value = ''
 
   try {
-    const caseSummaries = await fetchAllCaseSummaries()
-    const detailResponses = await Promise.all(
-      caseSummaries.map((item) => getPatientCaseDetail(item.case_id)),
-    )
-
-    patientCases.value = detailResponses.map((response) => response.data)
+    patientCases.value = await fetchAllCaseSummaries()
   } catch (error) {
     patientCases.value = []
     loadError.value = normalizeErrorMessage(error)
