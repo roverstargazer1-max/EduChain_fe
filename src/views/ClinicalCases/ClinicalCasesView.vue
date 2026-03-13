@@ -199,9 +199,11 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
+  chatWithPatient,
   chatWithPatientStream,
   confirmPatientExam,
   getPatientCaseDetail,
+  patientChatStreamEnabled,
   type ExamConfirmData,
   type ExamResultData,
   type ExamResultItem,
@@ -483,6 +485,15 @@ async function sendQuestion() {
 
   isSending.value = true
   try {
+    if (!patientChatStreamEnabled) {
+      const res = await chatWithPatient(displayCaseId.value, {
+        user_input: value,
+        session_id: sessionId.value,
+      })
+      handleConversationResponse(res)
+      return
+    }
+
     let streamingMessageId: number | null = null
 
     const res = await chatWithPatientStream(

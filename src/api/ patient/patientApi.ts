@@ -2,6 +2,13 @@ import request, { type ApiResponseBase } from '@/utils/request'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const successCode = 20000
+const patientStreamFlag = String(import.meta.env.VITE_ENABLE_PATIENT_STREAM ?? '').toLowerCase()
+
+export const patientChatStreamEnabled =
+  patientStreamFlag === '1' ||
+  patientStreamFlag === 'true' ||
+  patientStreamFlag === 'yes' ||
+  patientStreamFlag === 'on'
 
 export interface PaginationParams {
   page?: number
