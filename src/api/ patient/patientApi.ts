@@ -12,6 +12,8 @@ export interface PatientCaseSummary {
   difficulty: string
   summary: string
   tags: string[]
+  /** 案例背景（original_case.案例背景），由 GET /cases/{case_id} 返回 */
+  patient_background?: string
 }
 
 // 分页获取所有案例概要信息的接口返回的数据结构

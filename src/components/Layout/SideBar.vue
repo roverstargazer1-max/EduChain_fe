@@ -5,7 +5,7 @@
       <div class="logo-icon" :class="{ clickable: isCollapsed }" @click="isCollapsed && $emit('toggle-collapse')">
         <img src="@/assets/logo1.webp" alt="EduChain Logo" width="55" height="55" />
       </div>
-      <span v-show="!isCollapsed" class="logo-text">EduChain <span class="logo-pro">Pro</span></span>
+      <span v-show="!isCollapsed" class="logo-text">MedEduChain <span class="logo-pro"></span></span>
       <button v-show="!isCollapsed" class="collapse-btn" @click="$emit('toggle-collapse')">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
