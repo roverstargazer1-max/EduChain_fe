@@ -53,6 +53,29 @@ export interface PatientChatRequest {
 export interface ExamConfirmRequest {
   confirm_token: string
   confirmed?: boolean
+  session_id: string
+}
+
+export interface PatientSessionSummary {
+  session_id: string
+  case_id: string
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface TimelineEventItem {
+  action: string
+  data: Record<string, unknown>
+  created_at: string
+}
+
+export interface PatientSessionListResponse extends ApiResponseBase {
+  data: PatientSessionSummary[]
+}
+
+export interface PatientTimelineResponse extends ApiResponseBase {
+  data: TimelineEventItem[]
 }
 
 //---------------------以下是病人对话相关的数据结构---------------------
@@ -301,4 +324,16 @@ export function confirmPatientExam(
     `/api/v1/patient/${caseId}/confirm_exam`,
     payload,
   )
+}
+
+// 获取当前用户的会话列表
+export function getPatientSessions(caseId?: string): Promise<PatientSessionListResponse> {
+  return request.get<PatientSessionListResponse, { case_id?: string }>('/api/v1/patient/sessions', {
+    params: { case_id: caseId },
+  })
+}
+
+// 获取指定会话的时间线事件
+export function getPatientSessionTimeline(sessionId: string): Promise<PatientTimelineResponse> {
+  return request.get<PatientTimelineResponse>(`/api/v1/patient/sessions/${sessionId}/timeline`)
 }
