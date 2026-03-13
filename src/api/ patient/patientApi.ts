@@ -1,4 +1,5 @@
 import request, { type ApiResponseBase } from '@/utils/request'
+import { clearAuthSession, getAccessToken, redirectToLogin } from '@/utils/auth'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const successCode = 20000
@@ -161,15 +162,28 @@ export async function chatWithPatientStream(
   payload: PatientChatRequest,
   handlers: PatientStreamHandlers = {},
 ): Promise<PatientConversationResponse> {
+  const token = getAccessToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
   const response = await fetch(buildStreamUrl(`/api/v1/patient/${caseId}/chat/stream`), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(payload),
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthSession()
+      redirectToLogin()
+      throw new Error('登录状态已失效，请重新登录')
+    }
+
     throw new Error(`请求失败（HTTP ${response.status}）`)
   }
 

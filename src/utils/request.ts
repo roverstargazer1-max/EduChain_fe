@@ -1,4 +1,5 @@
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
+import { clearAuthSession, getAccessToken, redirectToLogin } from '@/utils/auth'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const successCode = 20000
@@ -41,6 +42,17 @@ const service: AxiosInstance = axios.create({
 	headers: {
 		'Content-Type': 'application/json',
 	},
+})
+
+service.interceptors.request.use((config) => {
+	const token = getAccessToken()
+	if (!token) {
+		return config
+	}
+
+	config.headers = config.headers ?? {}
+	;(config.headers as Record<string, string>).Authorization = `Bearer ${token}`
+	return config
 })
 
 function isApiResponse(value: unknown): value is ApiResponseBase {
@@ -113,6 +125,11 @@ async function request<TResponse = unknown, TData = unknown>(
 		}
 
 		const axiosError = error as AxiosError<ApiResponseBase>
+		if (axiosError.response?.status === 401) {
+			clearAuthSession()
+			redirectToLogin()
+		}
+
 		const message = normalizeHttpError(axiosError)
 		reportError(message, showError)
 

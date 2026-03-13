@@ -38,7 +38,7 @@
 
     <!-- Bottom -->
     <div class="sidebar-bottom">
-      <button class="nav-item logout-btn">
+      <button class="nav-item logout-btn" type="button" @click="handleLogout">
         <span class="nav-icon" v-html="iconLogout"></span>
         <span v-show="!isCollapsed" class="nav-label">退出登录</span>
       </button>
@@ -48,7 +48,7 @@
 
 <script setup lang="ts">
 //图标
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   iconDashboard,
   iconCases,
@@ -57,6 +57,7 @@ import {
   iconSettings,
   iconLogout,
 } from '@/assets/icons'
+import { clearAuthSession } from '@/utils/auth'
 
 defineProps<{
   isCollapsed: boolean
@@ -67,6 +68,7 @@ defineEmits<{
 }>()
 
 const route = useRoute()
+const router = useRouter()
 
 const platformItems = [
   { label: '首页', path: '/', icon: iconDashboard },
@@ -85,6 +87,11 @@ function isActiveRoute(path: string): boolean {
   }
 
   return route.path === path || route.path.startsWith(`${path}/`)
+}
+
+function handleLogout(): void {
+  clearAuthSession()
+  void router.push('/login')
 }
 </script>
 
