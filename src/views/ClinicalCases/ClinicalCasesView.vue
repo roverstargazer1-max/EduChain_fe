@@ -38,7 +38,7 @@
             开始问诊后，病人回复、系统提示与检查确认会显示在这里。
           </div>
 
-          <div v-for="item in chatMessages" :key="item.id">
+          <div v-for="item in chatMessages" :key="item.id" :class="['chat-row', getMessageRowClass(item)]">
             <div v-if="item.kind === 'doctor' || item.kind === 'chat'" class="chat-bubble"
               :class="item.kind === 'doctor' ? 'chat-bubble--doctor' : 'chat-bubble--patient'">
               <p>{{ item.content }}</p>
@@ -261,6 +261,18 @@ type ChatMessage =
   | NoticeMessage
   | ErrorMessage
   | ExamResultMessage
+
+function getMessageRowClass(message: ChatMessage): 'chat-row--left' | 'chat-row--right' | 'chat-row--center' {
+  if (message.kind === 'doctor') {
+    return 'chat-row--right'
+  }
+
+  if (message.kind === 'notice' || message.kind === 'error') {
+    return 'chat-row--center'
+  }
+
+  return 'chat-row--left'
+}
 
 const route = useRoute()
 const displayCaseId = computed(() => String(route.query.caseId ?? '1042'))
@@ -750,6 +762,23 @@ async function submitExamDecision(messageId: number, confirmed: boolean) {
   border: 1px dashed #cbd5e1;
   border-radius: 10px;
   padding: 10px 14px;
+}
+
+.chat-row {
+  width: 100%;
+  display: flex;
+}
+
+.chat-row--left {
+  justify-content: flex-start;
+}
+
+.chat-row--right {
+  justify-content: flex-end;
+}
+
+.chat-row--center {
+  justify-content: center;
 }
 
 .chat-bubble {
